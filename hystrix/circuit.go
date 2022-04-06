@@ -9,6 +9,9 @@ import (
 
 // CircuitBreaker is created for each ExecutorPool to track whether requests
 // should be attempted, or rejected if the Health of the circuit is too low.
+//
+// 断路器 为每个ExecutorPool创建CircuitBreaker，跟踪是否有请求
+// 应该尝试，如果电路的健康度太低，则拒绝。
 type CircuitBreaker struct {
 	Name                   string
 	open                   bool
@@ -31,6 +34,7 @@ func init() {
 }
 
 // GetCircuit returns the circuit for the given command and whether this call created it.
+// GetCircuit 返回给定命令的电路以及此调用是否创建了它。
 func GetCircuit(name string) (*CircuitBreaker, bool, error) {
 	circuitBreakersMutex.RLock()
 	_, ok := circuitBreakers[name]
@@ -41,6 +45,9 @@ func GetCircuit(name string) (*CircuitBreaker, bool, error) {
 		// because we released the rlock before we obtained the exclusive lock,
 		// we need to double check that some other thread didn't beat us to
 		// creation.
+		// 因为我们在获得排他锁之前释放了rlock，
+		// 我们需要仔细检查是否有其他线程没有击败我们
+		// 创建。
 		if cb, ok := circuitBreakers[name]; ok {
 			return cb, false, nil
 		}
@@ -53,6 +60,7 @@ func GetCircuit(name string) (*CircuitBreaker, bool, error) {
 }
 
 // Flush purges all circuit and metric information from memory.
+// Flush 从内存中清除所有电路和度量信息。
 func Flush() {
 	circuitBreakersMutex.Lock()
 	defer circuitBreakersMutex.Unlock()
@@ -65,6 +73,7 @@ func Flush() {
 }
 
 // newCircuitBreaker creates a CircuitBreaker with associated Health
+// newCircuitBreaker 创建一个具有关联 Health 的 CircuitBreaker
 func newCircuitBreaker(name string) *CircuitBreaker {
 	c := &CircuitBreaker{}
 	c.Name = name
@@ -77,6 +86,8 @@ func newCircuitBreaker(name string) *CircuitBreaker {
 
 // toggleForceOpen allows manually causing the fallback logic for all instances
 // of a given command.
+// toggleForceOpen 允许为所有实例手动触发回退逻辑
+//给定命令的。
 func (circuit *CircuitBreaker) toggleForceOpen(toggle bool) error {
 	circuit, _, err := GetCircuit(circuit.Name)
 	if err != nil {
@@ -89,6 +100,8 @@ func (circuit *CircuitBreaker) toggleForceOpen(toggle bool) error {
 
 // IsOpen is called before any Command execution to check whether or
 // not it should be attempted. An "open" circuit means it is disabled.
+// 在执行任何命令之前调用 IsOpen 以检查是否
+// 不应该尝试。“开”电路意味着它被禁用。
 func (circuit *CircuitBreaker) IsOpen() bool {
 	circuit.mutex.RLock()
 	o := circuit.forceOpen || circuit.open
@@ -104,6 +117,7 @@ func (circuit *CircuitBreaker) IsOpen() bool {
 
 	if !circuit.metrics.IsHealthy(time.Now()) {
 		// too many failures, open the circuit
+		//失败太多，断路
 		circuit.setOpen()
 		return true
 	}
@@ -114,6 +128,9 @@ func (circuit *CircuitBreaker) IsOpen() bool {
 // AllowRequest is checked before a command executes, ensuring that circuit state and metric health allow it.
 // When the circuit is open, this call will occasionally return true to measure whether the external service
 // has recovered.
+// 在命令执行之前检查 AllowRequest，确保电路状态和度量健康允许它。
+// 当电路打开时，这个调用会偶尔返回true来衡量是否有外部服务
+// 已经恢复。
 func (circuit *CircuitBreaker) AllowRequest() bool {
 	return !circuit.IsOpen() || circuit.allowSingleTest()
 }
@@ -164,6 +181,7 @@ func (circuit *CircuitBreaker) setClose() {
 }
 
 // ReportEvent records command metrics for tracking recent error rates and exposing data to the dashboard.
+// ReportEvent 记录用于跟踪最近错误率和向仪表板公开数据的命令指标。
 func (circuit *CircuitBreaker) ReportEvent(eventTypes []string, start time.Time, runDuration time.Duration) error {
 	if len(eventTypes) == 0 {
 		return fmt.Errorf("no event types sent for metrics")
