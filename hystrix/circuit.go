@@ -19,6 +19,7 @@ type CircuitBreaker struct {
 	mutex                  *sync.RWMutex
 	openedOrLastTestedTime int64
 
+	// 令牌池
 	executorPool *executorPool
 	metrics      *metricExchange
 }

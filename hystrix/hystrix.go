@@ -102,6 +102,7 @@ func Go(name string, run runFunc, fallback fallbackFunc) chan error {
 //
 // GoC 相对于Go 添加了上下文
 func GoC(ctx context.Context, name string, run runFuncC, fallback fallbackFuncC) chan error {
+	// MYDO: cmd可以对象复用, 优化内存
 	cmd := &command{
 		run:      run,
 		fallback: fallback,
@@ -182,10 +183,12 @@ func GoC(ctx context.Context, name string, run runFuncC, fallback fallbackFuncC)
 		cmd.Lock()
 		select {
 		case cmd.ticket = <-circuit.executorPool.Tickets:
+			// 获取到令牌，可以执行命令
 			ticketChecked = true
 			ticketCond.Signal()
 			cmd.Unlock()
 		default:
+			// 没有令牌则，拒绝执行命令
 			ticketChecked = true
 			ticketCond.Signal()
 			cmd.Unlock()
