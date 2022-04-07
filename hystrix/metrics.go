@@ -4,19 +4,25 @@ import (
 	"sync"
 	"time"
 
-	"github.com/afex/hystrix-go/hystrix/metric_collector"
+	metricCollector "github.com/afex/hystrix-go/hystrix/metric_collector"
 	"github.com/afex/hystrix-go/hystrix/rolling"
 )
 
+// commandExecution 命令执行 | 相关执行状态，执行开始时间...
 type commandExecution struct {
-	Types            []string      `json:"types"`
-	Start            time.Time     `json:"start_time"`
-	RunDuration      time.Duration `json:"run_duration"`
-	ConcurrencyInUse float64       `json:"concurrency_inuse"`
+	Types []string `json:"types"`
+	// 开始时间
+	Start time.Time `json:"start_time"`
+	// 运行耗时
+	RunDuration time.Duration `json:"run_duration"`
+	// 并发使用中
+	ConcurrencyInUse float64 `json:"concurrency_inuse"`
 }
 
+// metricExchange 指标交换机 | 同于统计命令执行的过程信息:执行失败,执行中断等, 执行耗时...
 type metricExchange struct {
-	Name    string
+	Name string
+	// 命令执行 | 状态变化, 需要统计的相关信息
 	Updates chan *commandExecution
 	Mutex   *sync.RWMutex
 
@@ -111,6 +117,7 @@ func (m *metricExchange) IncrementMetrics(wg *sync.WaitGroup, collector metricCo
 	wg.Done()
 }
 
+// Reset 释放资源
 func (m *metricExchange) Reset() {
 	m.Mutex.Lock()
 	defer m.Mutex.Unlock()

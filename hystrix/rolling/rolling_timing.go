@@ -101,6 +101,8 @@ func (r *Timing) removeOldBuckets() {
 }
 
 // Add appends the time.Duration given to the current time bucket.
+//
+// Add 将 time.Duration 附加到当前时间桶。
 func (r *Timing) Add(duration time.Duration) {
 	b := r.getCurrentBucket()
 

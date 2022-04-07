@@ -32,6 +32,7 @@ func newPoolMetrics(name string) *poolMetrics {
 	return m
 }
 
+// Reset 释放统计实例
 func (m *poolMetrics) Reset() {
 	m.Mutex.Lock()
 	defer m.Mutex.Unlock()

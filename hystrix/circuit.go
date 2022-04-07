@@ -10,8 +10,7 @@ import (
 // CircuitBreaker is created for each ExecutorPool to track whether requests
 // should be attempted, or rejected if the Health of the circuit is too low.
 //
-// 断路器 为每个ExecutorPool创建CircuitBreaker，跟踪是否有请求
-// 应该尝试，如果电路的健康度太低，则拒绝。
+// 为每个 ExecutorPool 创建 CircuitBreaker 以跟踪是否应该尝试请求，或者如果电路的 Health 过低则拒绝请求。
 type CircuitBreaker struct {
 	Name                   string
 	open                   bool
@@ -25,8 +24,10 @@ type CircuitBreaker struct {
 }
 
 var (
+	// 全局 断路器map锁
 	circuitBreakersMutex *sync.RWMutex
-	circuitBreakers      map[string]*CircuitBreaker
+	// 全局 断路器map
+	circuitBreakers map[string]*CircuitBreaker
 )
 
 func init() {
@@ -35,7 +36,8 @@ func init() {
 }
 
 // GetCircuit returns the circuit for the given command and whether this call created it.
-// GetCircuit 返回给定命令的电路以及此调用是否创建了它。
+//
+// GetCircuit 获取断路器, 没有则创建 | 返回给定命令的电路以及此调用是否创建了它。
 func GetCircuit(name string) (*CircuitBreaker, bool, error) {
 	circuitBreakersMutex.RLock()
 	_, ok := circuitBreakers[name]
@@ -46,9 +48,7 @@ func GetCircuit(name string) (*CircuitBreaker, bool, error) {
 		// because we released the rlock before we obtained the exclusive lock,
 		// we need to double check that some other thread didn't beat us to
 		// creation.
-		// 因为我们在获得排他锁之前释放了rlock，
-		// 我们需要仔细检查是否有其他线程没有击败我们
-		// 创建。
+		// 因为我们在获得独占锁之前释放了 rlock，所以我们需要仔细检查其他线程是否没有击败我们创建。
 		if cb, ok := circuitBreakers[name]; ok {
 			return cb, false, nil
 		}
@@ -61,7 +61,8 @@ func GetCircuit(name string) (*CircuitBreaker, bool, error) {
 }
 
 // Flush purges all circuit and metric information from memory.
-// Flush 从内存中清除所有电路和度量信息。
+//
+// Flush 释放断路器 | 从内存中清除所有电路和度量信息。
 func Flush() {
 	circuitBreakersMutex.Lock()
 	defer circuitBreakersMutex.Unlock()
@@ -74,7 +75,8 @@ func Flush() {
 }
 
 // newCircuitBreaker creates a CircuitBreaker with associated Health
-// newCircuitBreaker 创建一个具有关联 Health 的 CircuitBreaker
+//
+// newCircuitBreaker 创建断路器 | 创建一个具有关联 Health 的 CircuitBreaker
 func newCircuitBreaker(name string) *CircuitBreaker {
 	c := &CircuitBreaker{}
 	c.Name = name

@@ -50,6 +50,8 @@ func (r *Number) removeOldBuckets() {
 }
 
 // Increment increments the number in current timeBucket.
+//
+// Increment 增加当前 timeBucket 中的数字。
 func (r *Number) Increment(i float64) {
 	if i == 0 {
 		return

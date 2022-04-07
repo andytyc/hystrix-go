@@ -71,8 +71,7 @@ var (
 // Define a fallback function if you want to define some code to execute during outages.
 //
 // Go 运行你的函数，同时跟踪之前调用它的运行状况。
-// 如果你的函数开始变慢或反复失败，我们将阻塞
-// 新调用它，让您给依赖服务时间修复。
+// 如果您的函数开始变慢或反复失败，我们将阻止对它的新调用，以便您给依赖的服务时间来修复。
 //
 // 如果您想定义一些代码在中断期间执行，请定义一个回退函数。
 func Go(name string, run runFunc, fallback fallbackFunc) chan error {
@@ -94,9 +93,8 @@ func Go(name string, run runFunc, fallback fallbackFunc) chan error {
 //
 // Define a fallback function if you want to define some code to execute during outages.
 //
-// GoC 运行您的函数，同时跟踪之前对其调用的健康状况。
-// 如果你的函数开始变慢或反复失败，我们将阻塞
-// 新调用它，让您给依赖服务时间修复。
+// Go 运行你的函数，同时跟踪之前调用它的运行状况。
+// 如果您的函数开始变慢或反复失败，我们将阻止对它的新调用，以便您给依赖的服务时间来修复。
 //
 // 如果您想定义一些代码在中断期间执行，请定义一个回退函数。
 //
@@ -107,17 +105,15 @@ func GoC(ctx context.Context, name string, run runFuncC, fallback fallbackFuncC)
 		run:      run,
 		fallback: fallback,
 		start:    time.Now(),
-		errChan:  make(chan error, 1),
+		errChan:  make(chan error, 1), // chan 执行结束.失败的信号
 		finished: make(chan bool, 1),
 	}
 
 	// dont have methods with explicit params and returns
 	// let data come in and out naturally, like with any closure
 	// explicit error return to give place for us to kill switch the operation (fallback)
-
-	// 没有带有显式参数和返回的方法
-	// 让数据自然地进出，就像任何闭包一样
-	// 显式错误返回给我们杀死开关操作的地方（回退）
+	//
+	// 没有带有显式参数和返回的方法，让数据自然地进出，就像任何闭包显式错误返回一样，让我们可以终止切换操作（回退）
 
 	circuit, _, err := GetCircuit(name)
 	if err != nil {
@@ -243,6 +239,7 @@ func GoC(ctx context.Context, name string, run runFuncC, fallback fallbackFuncC)
 
 // Do runs your function in a synchronous manner, blocking until either your function succeeds
 // or an error is returned, including hystrix circuit errors
+//
 // Do 以同步方式运行你的函数，阻塞直到你的函数成功或返回错误，包括 hystrix 电路错误
 func Do(name string, run runFunc, fallback fallbackFunc) error {
 	runC := func(ctx context.Context) error {
@@ -259,10 +256,12 @@ func Do(name string, run runFunc, fallback fallbackFunc) error {
 
 // DoC runs your function in a synchronous manner, blocking until either your function succeeds
 // or an error is returned, including hystrix circuit errors
+//
 // DoC 以同步方式运行你的函数，阻塞直到你的函数成功或返回错误，包括 hystrix 电路错误
+//
 // DoC 相对于 Do 支持ctx
 func DoC(ctx context.Context, name string, run runFuncC, fallback fallbackFuncC) error {
-	// done 是否正常结束
+	// chan 执行结束.成功的信号
 	done := make(chan struct{}, 1)
 
 	// 需求命令
@@ -295,11 +294,13 @@ func DoC(ctx context.Context, name string, run runFuncC, fallback fallbackFuncC)
 		errChan = GoC(ctx, name, r, f)
 	}
 
-	// 查看结果
+	// 查看执行结果
 	select {
 	case <-done:
+		// 执行成功
 		return nil
 	case err := <-errChan:
+		// 执行失败
 		return err
 	}
 }
