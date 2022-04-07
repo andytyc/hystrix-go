@@ -45,9 +45,9 @@ type DefaultMetricCollector struct {
 	fallbackSuccesses *rolling.Number
 	// 回退失败数量
 	fallbackFailures *rolling.Number
-	// 总耗时
+	// 总耗时 | 从收到请求 -> 到开始进行统计信息
 	totalDuration *rolling.Timing
-	// 运行耗时 | 滚动运行的持续时间
+	// 处理耗时 | 允许处理请求 -> 到处理请求响应
 	runDuration *rolling.Timing
 }
 

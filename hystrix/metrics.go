@@ -10,11 +10,13 @@ import (
 
 // commandExecution 命令执行 | 相关执行状态，执行开始时间...
 type commandExecution struct {
+	// Types 记录处理请求过程中，所有的相关节点操作细节，比如：哪一步成功，哪一步失败
+	//
 	// 枚举值 参考:IncrementMetrics()函数中
 	Types []string `json:"types"`
-	// 开始时间
+	// 处理请求的开始时间, 从收到请求进来就开始了
 	Start time.Time `json:"start_time"`
-	// 运行耗时
+	// runfunC 执行命令操作了，记录此执行命令开始到结束的耗时
 	RunDuration time.Duration `json:"run_duration"`
 	// 并发使用中 | 即: 当前请求处理中数量 / 设置的最大请求处理量
 	ConcurrencyInUse float64 `json:"concurrency_inuse"`

@@ -38,7 +38,9 @@ func (e CircuitError) Error() string {
 type command struct {
 	sync.Mutex
 
-	ticket   *struct{}
+	// 获取允许处理请求的令牌
+	ticket *struct{}
+	// 处理请求开始时间
 	start    time.Time
 	errChan  chan error
 	finished chan bool
@@ -48,9 +50,10 @@ type command struct {
 	run runFuncC
 	// 回退命令 执行错误时触发
 	fallback fallbackFuncC
-	// 记录处理请求耗时
+	// 执行命令操作了，记录此执行命令开始到结束的耗时
 	runDuration time.Duration
-	events      []string
+	// 记录处理请求过程中，所有的相关节点操作细节，比如：哪一步成功，哪一步失败
+	events []string
 }
 
 var (
@@ -132,7 +135,9 @@ func GoC(ctx context.Context, name string, run runFuncC, fallback fallbackFuncC)
 
 	ticketCond := sync.NewCond(cmd)
 	ticketChecked := false
-	returnTicket := func() { // 回收请求允许执行的令牌
+
+	// returnTicket 回收令牌:此请求在被"限流策略"允许执行时给的令牌
+	returnTicket := func() {
 		cmd.Lock()
 		// Avoid releasing before a ticket is acquired.
 		// 避免在获取票证之前释放。
@@ -149,7 +154,11 @@ func GoC(ctx context.Context, name string, run runFuncC, fallback fallbackFuncC)
 	// 它确保只有更快的 goroutine 运行 errWithFallback() 和 reportAllEvent()。
 
 	returnOnce := &sync.Once{}
-	reportAllEvent := func() { // 汇报这次请求的处理情况 -> 指标统计
+
+	// reportAllEvent 对此次请求进行指标统计 | 注意只会触发一次
+	//
+	// 汇报这次请求的处理情况, 不管处理请求的结果是什么，都会将处理过程中所有的 操作事件类型 统计，并对相关请求过程的信息统计
+	reportAllEvent := func() {
 		err := cmd.circuit.ReportEvent(cmd.events, cmd.start, cmd.runDuration)
 		if err != nil {
 			log.Printf(err.Error())
@@ -329,6 +338,7 @@ func DoC(ctx context.Context, name string, run runFuncC, fallback fallbackFuncC)
 	}
 }
 
+// reportEvent 追加一个处理事件 [] event types
 func (c *command) reportEvent(eventType string) {
 	c.Lock()
 	defer c.Unlock()

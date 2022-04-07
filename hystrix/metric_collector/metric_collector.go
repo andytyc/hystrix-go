@@ -71,9 +71,9 @@ type MetricResult struct {
 	ContextCanceled float64
 	// ctx超时
 	ContextDeadlineExceeded float64
-	// 总耗时
+	// 总耗时 | 从收到请求 -> 到开始进行统计信息
 	TotalDuration time.Duration
-	// 运行耗时
+	// 处理耗时 | 允许处理请求 -> 到处理请求响应
 	RunDuration time.Duration
 	// 并发使用中 | 即: 当前请求处理中数量 / 设置的最大请求处理量
 	ConcurrencyInUse float64

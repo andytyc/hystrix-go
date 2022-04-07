@@ -16,8 +16,9 @@ type CircuitBreaker struct {
 	// 开 | 开启熔断
 	open bool
 	// 强开 | 强制开启熔断
-	forceOpen              bool
-	mutex                  *sync.RWMutex
+	forceOpen bool
+	mutex     *sync.RWMutex
+	// 状态变为熔断开 或 允许尝试一次请求处理(之前是熔断开,一直没处理请求) 的最新时间
 	openedOrLastTestedTime int64
 
 	// 执行池 | 用于限流
@@ -92,8 +93,8 @@ func newCircuitBreaker(name string) *CircuitBreaker {
 
 // toggleForceOpen allows manually causing the fallback logic for all instances
 // of a given command.
-// toggleForceOpen 允许为所有实例手动触发回退逻辑
-//给定命令的。
+//
+// toggleForceOpen 允许为给定命令的所有实例手动触发回退逻辑。
 func (circuit *CircuitBreaker) toggleForceOpen(toggle bool) error {
 	circuit, _, err := GetCircuit(circuit.Name)
 	if err != nil {
@@ -151,7 +152,8 @@ func (circuit *CircuitBreaker) allowSingleTest() bool {
 	now := time.Now().UnixNano()
 	openedOrLastTestedTime := atomic.LoadInt64(&circuit.openedOrLastTestedTime)
 	if circuit.open && now > openedOrLastTestedTime+getSettings(circuit.Name).SleepWindow.Nanoseconds() {
-		// 超出熔断时间段设置，尝试半开: 尝试允许处理请求一次
+		// 超出熔断时间段设置，尝试半开: 尝试允许处理请求一次, 如果处理成功了，则会将熔断关闭 -> 可以在 ReportEvent() 函数中看到相关逻辑 | MYDO: 这里是成功一次就熔断关闭，我想可以设置连续成功多少次后才允许熔断关闭
+		//
 		// CompareAndSwapInt64 将old替换为new, 为了后续的完整性, 交换保证成功 | 返回的就是是否交换成功:swapped
 		swapped := atomic.CompareAndSwapInt64(&circuit.openedOrLastTestedTime, openedOrLastTestedTime, now)
 		if swapped {
@@ -194,7 +196,8 @@ func (circuit *CircuitBreaker) setClose() {
 }
 
 // ReportEvent records command metrics for tracking recent error rates and exposing data to the dashboard.
-// ReportEvent 记录用于跟踪最近错误率和向仪表板公开数据的命令指标。
+//
+// ReportEvent 请求处理结束进行统计 | 注意：是完毕结束，不代表成功或失败，需要具体来看event | 记录用于跟踪最近错误率和向仪表板公开数据的命令指标。
 func (circuit *CircuitBreaker) ReportEvent(eventTypes []string, start time.Time, runDuration time.Duration) error {
 	if len(eventTypes) == 0 {
 		return fmt.Errorf("no event types sent for metrics")
@@ -203,7 +206,7 @@ func (circuit *CircuitBreaker) ReportEvent(eventTypes []string, start time.Time,
 	circuit.mutex.RLock()
 	o := circuit.open
 	circuit.mutex.RUnlock()
-	if eventTypes[0] == "success" && o {
+	if eventTypes[0] == "success" && o { // 注意: 假如 "半开时: 尝试一次处理 allowSingleTest" 成功了, 就直接熔断关闭了. MYDO: 如果以后需要，可以设置为必须连续成功多少次才可以熔断关闭
 		circuit.setClose()
 	}
 
