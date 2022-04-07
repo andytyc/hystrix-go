@@ -12,7 +12,7 @@ import (
 var Registry = metricCollectorRegistry{
 	lock: &sync.RWMutex{},
 	registry: []func(name string) MetricCollector{
-		newDefaultMetricCollector,
+		newDefaultMetricCollector, // 默认的一个, 如果想在自定义添加，调用:Registry.Register()
 	},
 }
 
@@ -38,6 +38,8 @@ func (m *metricCollectorRegistry) InitializeMetricCollectors(name string) []Metr
 }
 
 // Register places a MetricCollector Initializer in the registry maintained by this metricCollectorRegistry.
+//
+// Register 将 MetricCollector Initializer 放置在此 metricCollectorRegistry 维护的注册表中。
 func (m *metricCollectorRegistry) Register(initMetricCollector func(string) MetricCollector) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
@@ -45,21 +47,36 @@ func (m *metricCollectorRegistry) Register(initMetricCollector func(string) Metr
 	m.registry = append(m.registry, initMetricCollector)
 }
 
+// MetricResult 指标/度量结果
 type MetricResult struct {
-	Attempts                float64
-	Errors                  float64
-	Successes               float64
-	Failures                float64
-	Rejects                 float64
-	ShortCircuits           float64
-	Timeouts                float64
-	FallbackSuccesses       float64
-	FallbackFailures        float64
-	ContextCanceled         float64
+	// 尝试
+	Attempts float64
+	// 错误
+	Errors float64
+	// 成功
+	Successes float64
+	// 失败
+	Failures float64
+	// 拒绝
+	Rejects float64
+	// 短路 | 触发熔断
+	ShortCircuits float64
+	// 超时
+	Timeouts float64
+	// 回退成功
+	FallbackSuccesses float64
+	// 回退失败
+	FallbackFailures float64
+	// ctx取消
+	ContextCanceled float64
+	// ctx超时
 	ContextDeadlineExceeded float64
-	TotalDuration           time.Duration
-	RunDuration             time.Duration
-	ConcurrencyInUse        float64
+	// 总耗时
+	TotalDuration time.Duration
+	// 运行耗时
+	RunDuration time.Duration
+	// 并发使用中
+	ConcurrencyInUse float64
 }
 
 // MetricCollector represents the contract that all collectors must fulfill to gather circuit statistics.
@@ -71,10 +88,10 @@ type MetricResult struct {
 type MetricCollector interface {
 	// Update accepts a set of metrics from a command execution for remote instrumentation
 	//
-	// Update 接受来自远程检测的命令执行的一组指标
+	// Update 接受来自远程检测的命令执行的一组指标 | 执行统计操作, 如:增量统计、追加时间段
 	Update(MetricResult)
 	// Reset resets the internal counters and timers.
 	//
-	// Reset 释放资源 | 重置内部计数器和定时器。
+	// Reset 重置 | 重置内部计数器和定时器。
 	Reset()
 }

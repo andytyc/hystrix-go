@@ -110,6 +110,7 @@ func ConfigureCommand(name string, config CommandConfig) {
 	}
 }
 
+// getSettings 获取断路器配置 | 没有则创建
 func getSettings(name string) *Settings {
 	settingsMutex.RLock()
 	s, exists := circuitSettings[name]
