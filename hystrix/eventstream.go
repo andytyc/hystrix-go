@@ -10,23 +10,32 @@ import (
 	"github.com/afex/hystrix-go/hystrix/rolling"
 )
 
+// eventstream 事件流, 向外提供实时推送统计信息：熔断相关信息、限流相关信息 | 以此来分析服务处理能力和处理健康情况
+
 const (
 	streamEventBufferSize = 10
 )
 
 // NewStreamHandler returns a server capable of exposing dashboard metrics via HTTP.
+//
+// NewStreamHandler 返回一个能够通过 HTTP 公开仪表板指标的服务器。
 func NewStreamHandler() *StreamHandler {
 	return &StreamHandler{}
 }
 
 // StreamHandler publishes metrics for each command and each pool once a second to all connected HTTP client.
+//
+// StreamHandler 每秒向所有连接的 HTTP 客户端发布每个命令和每个池的指标。
 type StreamHandler struct {
 	requests map[*http.Request]chan []byte
 	mu       sync.RWMutex
-	done     chan struct{}
+	// done 结束指标收集的一个信号
+	done chan struct{}
 }
 
 // Start begins watching the in-memory circuit breakers for metrics
+//
+// Start 开始观察内存中的断路器指标
 func (sh *StreamHandler) Start() {
 	sh.requests = make(map[*http.Request]chan []byte)
 	sh.done = make(chan struct{})
@@ -34,6 +43,8 @@ func (sh *StreamHandler) Start() {
 }
 
 // Stop shuts down the metric collection routine
+//
+// Stop 关闭度量收集例程
 func (sh *StreamHandler) Stop() {
 	close(sh.done)
 }
@@ -42,6 +53,7 @@ var _ http.Handler = (*StreamHandler)(nil)
 
 func (sh *StreamHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// Make sure that the writer supports flushing.
+	// 确保作者支持刷新。
 	f, ok := rw.(http.Flusher)
 	if !ok {
 		http.Error(rw, "Streaming unsupported!", http.StatusInternalServerError)
@@ -59,6 +71,7 @@ func (sh *StreamHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		select {
 		case <-notify:
 			// client is gone
+			// 客户端不见了 | 结束通知,不再汇报统计信息
 			return
 		case event := <-events:
 			_, err := rw.Write(event)
@@ -70,11 +83,13 @@ func (sh *StreamHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// loop 轮询汇报统计指标,指标仪表盘
 func (sh *StreamHandler) loop() {
 	tick := time.Tick(1 * time.Second)
 	for {
 		select {
 		case <-tick:
+			// 汇报统计, 1s间隔
 			circuitBreakersMutex.RLock()
 			for _, cb := range circuitBreakers {
 				sh.publishMetrics(cb)
@@ -82,11 +97,13 @@ func (sh *StreamHandler) loop() {
 			}
 			circuitBreakersMutex.RUnlock()
 		case <-sh.done:
+			// 取消汇报统计
 			return
 		}
 	}
 }
 
+// publishThreadPools 推送指标,仪表盘 | 熔断策略 | 汇报实时一段时间内的统计指标，比如:是否熔断、请求成功数量、请求失败数量、请求总数量、处理失败百分比...等
 func (sh *StreamHandler) publishMetrics(cb *CircuitBreaker) error {
 	now := time.Now()
 	reqCount := cb.metrics.Requests().Sum(now)
@@ -141,6 +158,7 @@ func (sh *StreamHandler) publishMetrics(cb *CircuitBreaker) error {
 	return nil
 }
 
+// publishThreadPools 推送线程池指标 | 限流策略 | 通过令牌约束并发处理请求数量, 这里有并发处理指标统计
 func (sh *StreamHandler) publishThreadPools(pool *executorPool) error {
 	now := time.Now()
 
@@ -173,6 +191,7 @@ func (sh *StreamHandler) publishThreadPools(pool *executorPool) error {
 	return nil
 }
 
+// writeToRequests 发送给客户端统计指标仪表盘信息 | 写入到客户端注册/订阅的通知管道里
 func (sh *StreamHandler) writeToRequests(eventBytes []byte) error {
 	var b bytes.Buffer
 	_, err := b.Write([]byte("data:"))
@@ -202,6 +221,7 @@ func (sh *StreamHandler) writeToRequests(eventBytes []byte) error {
 	return nil
 }
 
+// register 注册/订阅 | 为客户端req连接创建一个通知管道 | 返回一个通知管道
 func (sh *StreamHandler) register(req *http.Request) <-chan []byte {
 	sh.mu.RLock()
 	events, ok := sh.requests[req]
@@ -217,6 +237,7 @@ func (sh *StreamHandler) register(req *http.Request) <-chan []byte {
 	return events
 }
 
+// unregister 注销/取消订阅 | 移除客户端req连接对应的通知管道
 func (sh *StreamHandler) unregister(req *http.Request) {
 	sh.mu.Lock()
 	delete(sh.requests, req)
