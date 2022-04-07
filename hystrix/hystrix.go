@@ -42,12 +42,13 @@ type command struct {
 	start    time.Time
 	errChan  chan error
 	finished chan bool
-	// 断路器
+	// 断路器/电路
 	circuit *CircuitBreaker
 	// 执行命令
 	run runFuncC
 	// 回退命令 执行错误时触发
-	fallback    fallbackFuncC
+	fallback fallbackFuncC
+	// 记录处理请求耗时
 	runDuration time.Duration
 	events      []string
 }
@@ -115,6 +116,7 @@ func GoC(ctx context.Context, name string, run runFuncC, fallback fallbackFuncC)
 	//
 	// 没有带有显式参数和返回的方法，让数据自然地进出，就像任何闭包显式错误返回一样，让我们可以终止切换操作（回退）
 
+	// circuit 这个断路器，实现了:限流和熔断
 	circuit, _, err := GetCircuit(name)
 	if err != nil {
 		cmd.errChan <- err
@@ -122,14 +124,15 @@ func GoC(ctx context.Context, name string, run runFuncC, fallback fallbackFuncC)
 	}
 	cmd.circuit = circuit
 
-	ticketCond := sync.NewCond(cmd)
-	ticketChecked := false
 	// When the caller extracts error from returned errChan, it's assumed that
 	// the ticket's been returned to executorPool. Therefore, returnTicket() can
 	// not run after cmd.errorWithFallback().
 	// 当调用者从返回的 errChan 中提取错误时，假设票证已经返回到 executorPool。
 	// 因此，在 cmd.errorWithFallback() 之后，returnTicket() 无法运行。
-	returnTicket := func() {
+
+	ticketCond := sync.NewCond(cmd)
+	ticketChecked := false
+	returnTicket := func() { // 回收请求允许执行的令牌
 		cmd.Lock()
 		// Avoid releasing before a ticket is acquired.
 		// 避免在获取票证之前释放。
@@ -139,27 +142,35 @@ func GoC(ctx context.Context, name string, run runFuncC, fallback fallbackFuncC)
 		cmd.circuit.executorPool.Return(cmd.ticket)
 		cmd.Unlock()
 	}
+
 	// Shared by the following two goroutines. It ensures only the faster
 	// goroutine runs errWithFallback() and reportAllEvent().
 	// 由以下两个 goroutine 共享。
 	// 它确保只有更快的 goroutine 运行 errWithFallback() 和 reportAllEvent()。
+
 	returnOnce := &sync.Once{}
-	reportAllEvent := func() {
+	reportAllEvent := func() { // 汇报这次请求的处理情况 -> 指标统计
 		err := cmd.circuit.ReportEvent(cmd.events, cmd.start, cmd.runDuration)
 		if err != nil {
 			log.Printf(err.Error())
 		}
 	}
 
+	// 处理请求
 	go func() {
 		defer func() { cmd.finished <- true }()
 
 		// Circuits get opened when recent executions have shown to have a high error rate.
 		// Rejecting new executions allows backends to recover, and the circuit will allow
 		// new traffic when it feels a healthly state has returned.
+		// 当最近的执行显示错误率很高时，电路就会打开。
+		// 拒绝新的执行允许后端恢复，当电路感觉健康状态恢复时，将允许新的流量。
+
+		// 熔断策略
 		if !cmd.circuit.AllowRequest() {
 			cmd.Lock()
 			// It's safe for another goroutine to go ahead releasing a nil ticket.
+			// 另一个 goroutine 继续释放 nil 票证是安全的。
 			ticketChecked = true
 			ticketCond.Signal()
 			cmd.Unlock()
@@ -176,6 +187,12 @@ func GoC(ctx context.Context, name string, run runFuncC, fallback fallbackFuncC)
 		// When requests slow down but the incoming rate of requests stays the same, you have to
 		// run more at a time to keep up. By controlling concurrency during these situations, you can
 		// shed load which accumulates due to the increasing ratio of active commands to incoming requests.
+		// 由于后端动摇，请求需要更长的时间，但并不总是失败。
+		//
+		// 当请求变慢但请求的传入速率保持不变时，您必须一次运行更多才能跟上。
+		// 通过在这些情况下控制并发，您可以减少由于活动命令与传入请求的比率增加而累积的负载。
+
+		// 限流策略
 		cmd.Lock()
 		select {
 		case cmd.ticket = <-circuit.executorPool.Tickets:
@@ -196,28 +213,34 @@ func GoC(ctx context.Context, name string, run runFuncC, fallback fallbackFuncC)
 			return
 		}
 
+		// 开始处理请求
 		runStart := time.Now()
-		runErr := run(ctx)
+		runErr := run(ctx) // 处理请求
 		returnOnce.Do(func() {
 			defer reportAllEvent()
-			cmd.runDuration = time.Since(runStart)
+			cmd.runDuration = time.Since(runStart) // 记录处理请求耗时
 			returnTicket()
 			if runErr != nil {
-				cmd.errorWithFallback(ctx, runErr)
+				cmd.errorWithFallback(ctx, runErr) // 执行回退命令
 				return
 			}
 			cmd.reportEvent("success")
 		})
 	}()
 
+	// 处理请求超时
 	go func() {
 		timer := time.NewTimer(getSettings(name).Timeout)
 		defer timer.Stop()
 
 		select {
 		case <-cmd.finished:
+			// 处理请求完毕 | 注意：上边处理请求虽然有了结果结束了，但可能是：熔断拒绝请求、限流拒绝请求、请求处理成功、请求处理失败
+			//
 			// returnOnce has been executed in another goroutine
+			// returnOnce 已在另一个 goroutine 中执行
 		case <-ctx.Done():
+			// ctx 结束
 			returnOnce.Do(func() {
 				returnTicket()
 				cmd.errorWithFallback(ctx, ctx.Err())
@@ -225,6 +248,7 @@ func GoC(ctx context.Context, name string, run runFuncC, fallback fallbackFuncC)
 			})
 			return
 		case <-timer.C:
+			// 处理请求超时了
 			returnOnce.Do(func() {
 				returnTicket()
 				cmd.errorWithFallback(ctx, ErrTimeout)
@@ -313,7 +337,8 @@ func (c *command) reportEvent(eventType string) {
 }
 
 // errorWithFallback triggers the fallback while reporting the appropriate metric events.
-// errorWithFallback 在报告适当的度量事件时触发回退。
+//
+// errorWithFallback 执行回退命令 | 在报告适当的度量事件时触发回退。
 func (c *command) errorWithFallback(ctx context.Context, err error) {
 	eventType := "failure"
 	if err == ErrCircuitOpen {

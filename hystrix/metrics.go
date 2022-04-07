@@ -16,14 +16,14 @@ type commandExecution struct {
 	Start time.Time `json:"start_time"`
 	// 运行耗时
 	RunDuration time.Duration `json:"run_duration"`
-	// 并发使用中
+	// 并发使用中 | 即: 当前请求处理中数量 / 设置的最大请求处理量
 	ConcurrencyInUse float64 `json:"concurrency_inuse"`
 }
 
 // metricExchange 指标交换机 | 同于统计命令执行的过程信息:执行失败,执行中断等, 执行耗时...
 type metricExchange struct {
 	Name string
-	// 命令执行 | 状态变化, 需要统计的相关信息
+	// 命令执行信息统计的通知管道 | 状态变化, 需要统计的相关信息
 	Updates chan *commandExecution
 	Mutex   *sync.RWMutex
 
@@ -31,6 +31,7 @@ type metricExchange struct {
 	metricCollectors []metricCollector.MetricCollector
 }
 
+// newMetricExchange 新建一个指标交换机，并开启监控
 func newMetricExchange(name string) *metricExchange {
 	m := &metricExchange{}
 	m.Name = name

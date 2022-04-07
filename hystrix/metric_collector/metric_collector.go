@@ -75,7 +75,7 @@ type MetricResult struct {
 	TotalDuration time.Duration
 	// 运行耗时
 	RunDuration time.Duration
-	// 并发使用中
+	// 并发使用中 | 即: 当前请求处理中数量 / 设置的最大请求处理量
 	ConcurrencyInUse float64
 }
 

@@ -20,6 +20,19 @@ var (
 	DefaultLogger = NoopLogger{}
 )
 
+type Settings struct {
+	// Timeout 执行command的超时时间
+	Timeout time.Duration
+	// MaxConcurrentRequests command的最大并发量
+	MaxConcurrentRequests int
+	// SleepWindow 过多长时间，熔断器再次检测是否开启(判断熔断条件)。单位毫秒
+	SleepWindow time.Duration
+	// 熔断条件1: 请求阈值(一个统计窗口10秒内请求数量)  熔断器是否打开首先要满足这个条件；
+	RequestVolumeThreshold uint64
+	// 熔断条件2: 错误率 | 请求数量大于等于 RequestVolumeThreshold , 并且错误率到达这个百分比 ErrorPercentThreshold 后就会启动熔断:open
+	ErrorPercentThreshold int
+}
+
 /*
 config := hystrix.CommandConfig{
 	Timeout:                2000, //执行command的超时时间
@@ -29,18 +42,6 @@ config := hystrix.CommandConfig{
 	RequestVolumeThreshold: 5,    //请求阈值(一个统计窗口10秒内请求数量)  熔断器是否打开首先要满足这个条件；这里的设置表示至少有5个请求才进行ErrorPercentThreshold错误百分比计算
 }
 */
-type Settings struct {
-	// 执行command的超时时间
-	Timeout time.Duration
-	// command的最大并发量
-	MaxConcurrentRequests int
-	// 过多长时间，熔断器再次检测是否开启。单位毫秒
-	RequestVolumeThreshold uint64
-	// 错误率 请求数量大于等于RequestVolumeThreshold并且错误率到达这个百分比后就会启动
-	SleepWindow time.Duration
-	// 请求阈值(一个统计窗口10秒内请求数量)  熔断器是否打开首先要满足这个条件；这里的设置表示至少有5个请求才进行ErrorPercentThreshold错误百分比计算
-	ErrorPercentThreshold int
-}
 
 // CommandConfig is used to tune circuit settings at runtime
 // CommandConfig 用于在运行时调整电路设置

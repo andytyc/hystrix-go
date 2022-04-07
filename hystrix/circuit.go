@@ -10,17 +10,20 @@ import (
 // CircuitBreaker is created for each ExecutorPool to track whether requests
 // should be attempted, or rejected if the Health of the circuit is too low.
 //
-// 为每个 ExecutorPool 创建 CircuitBreaker 以跟踪是否应该尝试请求，或者如果电路的 Health 过低则拒绝请求。
+// CircuitBreaker 断路器/电路 | 为每个 ExecutorPool 创建 CircuitBreaker 以跟踪是否应该尝试请求，或者如果电路的 Health 过低则拒绝请求。
 type CircuitBreaker struct {
-	Name                   string
-	open                   bool
+	Name string
+	// 开 | 开启熔断
+	open bool
+	// 强开 | 强制开启熔断
 	forceOpen              bool
 	mutex                  *sync.RWMutex
 	openedOrLastTestedTime int64
 
-	// 令牌池
+	// 执行池 | 用于限流
 	executorPool *executorPool
-	metrics      *metricExchange
+	// 指标统计 | 用于熔断
+	metrics *metricExchange
 }
 
 var (
@@ -103,8 +106,8 @@ func (circuit *CircuitBreaker) toggleForceOpen(toggle bool) error {
 
 // IsOpen is called before any Command execution to check whether or
 // not it should be attempted. An "open" circuit means it is disabled.
-// 在执行任何命令之前调用 IsOpen 以检查是否
-// 不应该尝试。“开”电路意味着它被禁用。
+//
+// IsOpen 熔断是否为开状态, 如果是则拒绝尝试处理请求 | 在任何命令执行之前调用 IsOpen 以检查是否应该尝试它。 “开”电路意味着它被禁用。
 func (circuit *CircuitBreaker) IsOpen() bool {
 	circuit.mutex.RLock()
 	o := circuit.forceOpen || circuit.open
@@ -120,7 +123,7 @@ func (circuit *CircuitBreaker) IsOpen() bool {
 
 	if !circuit.metrics.IsHealthy(time.Now()) {
 		// too many failures, open the circuit
-		//失败太多，断路
+		// 失败太多，熔断打开
 		circuit.setOpen()
 		return true
 	}
@@ -131,13 +134,16 @@ func (circuit *CircuitBreaker) IsOpen() bool {
 // AllowRequest is checked before a command executes, ensuring that circuit state and metric health allow it.
 // When the circuit is open, this call will occasionally return true to measure whether the external service
 // has recovered.
+//
+// AllowRequest 查看是否允许尝试处理请求
+//
 // 在命令执行之前检查 AllowRequest，确保电路状态和度量健康允许它。
-// 当电路打开时，这个调用会偶尔返回true来衡量是否有外部服务
-// 已经恢复。
+// 当电路打开时，这个调用偶尔会返回true来衡量外部服务是否已经恢复。
 func (circuit *CircuitBreaker) AllowRequest() bool {
 	return !circuit.IsOpen() || circuit.allowSingleTest()
 }
 
+// allowSingleTest 允许尝试处理请求 | 即：是否半开状态
 func (circuit *CircuitBreaker) allowSingleTest() bool {
 	circuit.mutex.RLock()
 	defer circuit.mutex.RUnlock()
@@ -145,6 +151,8 @@ func (circuit *CircuitBreaker) allowSingleTest() bool {
 	now := time.Now().UnixNano()
 	openedOrLastTestedTime := atomic.LoadInt64(&circuit.openedOrLastTestedTime)
 	if circuit.open && now > openedOrLastTestedTime+getSettings(circuit.Name).SleepWindow.Nanoseconds() {
+		// 超出熔断时间段设置，尝试半开: 尝试允许处理请求一次
+		// CompareAndSwapInt64 将old替换为new, 为了后续的完整性, 交换保证成功 | 返回的就是是否交换成功:swapped
 		swapped := atomic.CompareAndSwapInt64(&circuit.openedOrLastTestedTime, openedOrLastTestedTime, now)
 		if swapped {
 			log.Printf("hystrix-go: allowing single test to possibly close circuit %v", circuit.Name)
@@ -155,6 +163,7 @@ func (circuit *CircuitBreaker) allowSingleTest() bool {
 	return false
 }
 
+// setOpen 熔断打开,并记录打开最新时间(当超过一段时间后，尝试半开，尝试处理请求) | 关 -> 开
 func (circuit *CircuitBreaker) setOpen() {
 	circuit.mutex.Lock()
 	defer circuit.mutex.Unlock()
@@ -169,6 +178,7 @@ func (circuit *CircuitBreaker) setOpen() {
 	circuit.open = true
 }
 
+// setClose 熔断关闭,并重置统计收集器/计数器 | 开 -> 关
 func (circuit *CircuitBreaker) setClose() {
 	circuit.mutex.Lock()
 	defer circuit.mutex.Unlock()
