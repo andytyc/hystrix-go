@@ -9,7 +9,7 @@ import (
 // time buckets. Currently the buckets are one second long and only the last 10 seconds are kept.
 //
 // Number 在一定数量的时间桶上跟踪 numberBucket。
-// 目前，存储桶的长度为一秒，仅保留最后 10 秒。
+// 目前，存储桶的长度为一秒，仅保留最后 10 秒{rolling:滚动}。
 type Number struct {
 	Buckets map[int64]*numberBucket
 	Mutex   *sync.RWMutex
@@ -79,7 +79,7 @@ func (r *Number) Increment(i float64) {
 
 // UpdateMax updates the maximum value in the current bucket.
 //
-// UpdateMax 峰值统计 | 更新当前桶中的最大值。| 即：统计在当前秒内最大的值
+// UpdateMax 更新峰值 | 更新当前桶中的最大值。| 即：统计在当前秒内最大的值b.Value 小于传入的 n, 则更新最大值为n
 func (r *Number) UpdateMax(n float64) {
 	r.Mutex.Lock()
 	defer r.Mutex.Unlock()

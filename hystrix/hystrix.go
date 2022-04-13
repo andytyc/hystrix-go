@@ -41,8 +41,10 @@ type command struct {
 	// 获取允许处理请求的令牌
 	ticket *struct{}
 	// 处理请求开始时间
-	start    time.Time
-	errChan  chan error
+	start time.Time
+	// 关键返回通道, 表示:执行命令结束，是否执行失败的通知管道
+	errChan chan error
+	// 是内部处理命令的控制管道，知悉是否执行命令正常结束, 这里的正常包括:熔断拒绝结束,限流拒绝请求、请求处理成功、请求处理失败等正常逻辑结束，不包含:请求超时, ctx主动停止
 	finished chan bool
 	// 断路器/电路
 	circuit *CircuitBreaker

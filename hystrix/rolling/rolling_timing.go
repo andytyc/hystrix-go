@@ -11,8 +11,12 @@ import (
 // The Durations are kept in an array to allow for a variety of
 // statistics to be calculated from the source data.
 //
-// Timing 维护每个时间桶的时间Durations。
+// Timing 维护每个时间桶的时间Durations，仅保留最近 60 秒内{rolling:滚动}。应用场景：记录执行命令的耗时
 // 持续时间保存在一个数组中，以允许从源数据计算各种统计信息。
+//
+// 解读:
+// Buckets map[int64]*timingBucket 时间序列指标的map (一张向量图) -> {时间序列指标, 时间序列指标, ...}
+// 时间序列指标: time: [dur, dur, ...], 一个秒级时间戳对应一个时间序列指标, 指标值是一个耗时数组, 表示：在此刻执行多次命令，而每一次执行的耗时进行记录
 type Timing struct {
 	Buckets map[int64]*timingBucket
 	Mutex   *sync.RWMutex
